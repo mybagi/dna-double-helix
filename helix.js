@@ -19,6 +19,7 @@ function initHelix(canvas) {
     [175, 112, 255], [244, 115, 212], [255, 151, 143], [255, 209, 139],
   ];
   const colorInk = shades.map(color => colorString(color, .09));
+  const bondInk = shades.map(color => colorString(color, .32));
   const coreInk = shades.map(color => colorString(color, .52));
   const depthSteps = 5;
   const makeBatches = () => Array.from({ length: shades.length * depthSteps }, () => []);
@@ -81,15 +82,15 @@ function initHelix(canvas) {
   }
 
   const pairs = 24;
-  const pointsPerPair = 23;
+  const pointsPerPair = 36;
   for (let index = 0; index < pairs; index++) {
     const t = (index + .5) / pairs;
     const a = strand(t, 0), b = strand(t, 1);
     for (let dot = 0; dot < pointsPerPair; dot++) {
-      const q = (dot + .5 + (random() - .5) * .84) / pointsPerPair;
-      const point = { x: mix(a.x, b.x, q), y: a.y + (random() - .5) * 6, z: mix(a.z, b.z, q) };
+      const q = (dot + .5 + (random() - .5) * .65) / pointsPerPair;
+      const point = { x: mix(a.x, b.x, q), y: a.y + (random() - .5) * 3, z: mix(a.z, b.z, q) };
       const color = strandColor(q < .5 ? 0 : 1, t);
-      particles.push(makeParticle(point, color, 6.2, true));
+      particles.push(makeParticle(point, color, 3.7, true));
     }
   }
 
@@ -165,7 +166,7 @@ function initHelix(canvas) {
     for (const group of highlightBatches) group.length = 0;
     for (const group of crossbarBatches) group.length = 0;
 
-    const count = width < 420 ? 1900 : width < 580 ? 2340 : particles.length;
+    const count = width < 420 ? 2100 : width < 580 ? 2600 : particles.length;
     for (let index = 0; index < count; index++) {
       const particle = particles[Math.floor(index * particles.length / count)];
       const x = particle.x + Math.sin(seconds * 1.42 + particle.phase) * 1.42;
@@ -248,7 +249,9 @@ function initHelix(canvas) {
       const highlights = highlightBatches[index];
       const crossbars = crossbarBatches[index];
       const diameter = detailScale * (1.42 + .76 * depth + .07 * morph);
-      strokeDots(crossbars, colorInk[color], diameter * mix(.74, 1, morph), .46 + .31 * depth + .12 * morph);
+      const bondDiameter = diameter * mix(1.17, 1, morph);
+      strokeDots(crossbars, colorInk[color], bondDiameter * 1.8, (.11 + .05 * depth) * (1 - morph));
+      strokeDots(crossbars, bondInk[color], bondDiameter, .62 + .27 * depth - .06 * morph);
       strokeDots(dots, colorInk[color], diameter, .57 + .37 * depth);
       strokeDots(highlights, colorInk[color], diameter * 2.62, .14 + .08 * depth);
       strokeDots(highlights, coreInk[color], diameter * 1.18, .72 + .26 * depth);
