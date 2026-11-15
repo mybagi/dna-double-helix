@@ -9,7 +9,7 @@ function initHelix(canvas) {
   const control = figure.querySelector('.motion');
   const controlLabel = control?.querySelector('.motion-label');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
-  const pointer = { x: 0, y: 0, toX: 0, toY: 0, flowX: 0, flowY: 0, strength: 0, inside: false };
+  const pointer = { x: 0, y: 0, lastX: 0, lastY: 0, flowX: 0, flowY: 0, strength: 0, pulse: 0, inside: false };
   const tau = Math.PI * 2;
   const pitch = 1.95 * tau;
   const radius = 74;
@@ -18,8 +18,8 @@ function initHelix(canvas) {
     [86, 144, 255], [74, 195, 255], [73, 247, 218], [122, 132, 255],
     [175, 112, 255], [244, 115, 212], [255, 151, 143], [255, 209, 139],
   ];
-  const colorInk = shades.map(color => colorString(color, .06));
-  const coreInk = shades.map(color => colorString(color, .47));
+  const colorInk = shades.map(color => colorString(color, .09));
+  const coreInk = shades.map(color => colorString(color, .52));
   const depthSteps = 5;
   const makeBatches = () => Array.from({ length: shades.length * depthSteps }, () => []);
   const dotBatches = makeBatches();
@@ -63,14 +63,14 @@ function initHelix(canvas) {
       y: point.y + (random() - .5) * spread,
       z: point.z + Math.sin(direction) * spread,
       orbitX: orbit * Math.cos(phase), orbitY: orbit * Math.sin(phase),
-      color, phase, isCrossbar, bright: random() > .74,
+      color, phase, isCrossbar, bright: random() > .69,
       offsetX: 0, offsetY: 0, speedX: 0, speedY: 0,
       xOnScreen: 0, yOnScreen: 0, tailX: 0, tailY: 0,
     };
   }
 
   const particles = [];
-  const strandCount = 1040;
+  const strandCount = 1320;
   for (let side = 0; side < 2; side++) {
     for (let index = 0; index < strandCount; index++) {
       const t = (index + random()) / strandCount;
@@ -81,19 +81,19 @@ function initHelix(canvas) {
   }
 
   const pairs = 24;
-  const pointsPerPair = 26;
+  const pointsPerPair = 23;
   for (let index = 0; index < pairs; index++) {
     const t = (index + .5) / pairs;
     const a = strand(t, 0), b = strand(t, 1);
     for (let dot = 0; dot < pointsPerPair; dot++) {
       const q = (dot + .5 + (random() - .5) * .84) / pointsPerPair;
-      const point = { x: mix(a.x, b.x, q), y: a.y, z: mix(a.z, b.z, q) };
+      const point = { x: mix(a.x, b.x, q), y: a.y + (random() - .5) * 6, z: mix(a.z, b.z, q) };
       const color = strandColor(q < .5 ? 0 : 1, t);
-      particles.push(makeParticle(point, color, 5.1, true));
+      particles.push(makeParticle(point, color, 6.2, true));
     }
   }
 
-  const stars = Array.from({ length: 70 }, () => ({
+  const stars = Array.from({ length: 82 }, () => ({
     angle: random() * tau, distance: 100 + 164 * random() ** .7,
     drift: .03 * (2 * random() - 1), radius: .28 + random() ** 2 * .7,
     alpha: .14 + .38 * random() ** 2, phase: random() * tau,
@@ -128,18 +128,26 @@ function initHelix(canvas) {
     const ringRadius = Math.min(width * (wide ? .375 : .412), tall * .69) * breath;
     const ringAspect = .44 + .029 * Math.sin(seconds * .62);
 
-    const follow = 1 - Math.exp(-13 * dt);
-    const oldX = pointer.x, oldY = pointer.y;
-    pointer.x = mix(pointer.x, pointer.toX, follow);
-    pointer.y = mix(pointer.y, pointer.toY, follow);
-    const drift = 1 - Math.exp(-7 * dt);
-    const wakeRate = dt > 0 ? .125 / dt : 0;
-    pointer.flowX = mix(pointer.flowX, (pointer.x - oldX) * wakeRate, drift);
-    pointer.flowY = mix(pointer.flowY, (pointer.y - oldY) * wakeRate, drift);
-    pointer.strength = mix(pointer.strength, pointer.inside && !paused ? 1 : 0, drift);
-    const influence = Math.max(32, 68 * scale);
-    const impulse = 38 * scale;
-    const pull = Math.exp(-7.8 * dt);
+    const influence = Math.max(36, 77 * scale);
+    const influenceSq = influence * influence;
+    const impulse = 77 * scale;
+    const stepX = pointer.x - pointer.lastX, stepY = pointer.y - pointer.lastY;
+    const sweep = Math.min(1, influence * .94 / Math.max(1, Math.hypot(stepX, stepY)));
+    const pathX = stepX * sweep, pathY = stepY * sweep;
+    const startX = pointer.x - pathX, startY = pointer.y - pathY;
+    const pathSquared = pathX * pathX + pathY * pathY;
+    const wakeEase = 1 - Math.exp(-24 * dt);
+    pointer.flowX = mix(pointer.flowX, pathX, wakeEase);
+    pointer.flowY = mix(pointer.flowY, pathY, wakeEase);
+    const pushing = !paused && (pointer.inside || pointer.pulse > 0);
+    pointer.pulse = Math.max(0, pointer.pulse - dt);
+    pointer.strength = mix(pointer.strength, pushing ? 1 : 0, 1 - Math.exp(-26 * dt));
+    pointer.lastX = pointer.x;
+    pointer.lastY = pointer.y;
+    const scatterRate = 25;
+    const settleRate = 9.2;
+    const scatterPull = Math.exp(-scatterRate * dt);
+    const settlePull = Math.exp(-settleRate * dt);
 
     context.clearRect(0, 0, width, tall);
     context.fillStyle = '#a8c2ff';
@@ -157,7 +165,7 @@ function initHelix(canvas) {
     for (const group of highlightBatches) group.length = 0;
     for (const group of crossbarBatches) group.length = 0;
 
-    const count = width < 420 ? 1610 : particles.length;
+    const count = width < 420 ? 1900 : width < 580 ? 2340 : particles.length;
     for (let index = 0; index < count; index++) {
       const particle = particles[Math.floor(index * particles.length / count)];
       const x = particle.x + Math.sin(seconds * 1.42 + particle.phase) * 1.42;
@@ -181,41 +189,42 @@ function initHelix(canvas) {
         depth = mix(depth, .52 + .42 * across, morph);
       }
 
-      let goalX = 0, goalY = 0;
-      if (pointer.strength > .004) {
-        const dx = px - pointer.x, dy = py - pointer.y;
+      let goalX = 0, goalY = 0, rate = settleRate, pull = settlePull;
+      if (pushing) {
+        // Use the swept path as well as the last position, so a quick pass still scatters the dots it crosses.
+        const along = pathSquared > 1 ? Math.max(0, Math.min(1, ((px - startX) * pathX + (py - startY) * pathY) / pathSquared)) : 1;
+        const dx = px - (startX + along * pathX), dy = py - (startY + along * pathY);
         const distanceSq = dx * dx + dy * dy;
-        if (distanceSq < influence * influence) {
+        if (distanceSq < influenceSq) {
           const distance = Math.sqrt(distanceSq);
-          const falloff = 1 - distance / influence;
-          const pressure = falloff * falloff * pointer.strength;
-          const outward = impulse / Math.max(distance, influence * .16);
-          const side = .32 * outward;
-          const wakeX = Math.max(-impulse, Math.min(impulse, pointer.flowX));
-          const wakeY = Math.max(-impulse, Math.min(impulse, pointer.flowY));
-          goalX = (dx * outward - dy * side + wakeX * .36) * pressure;
-          goalY = (dy * outward + dx * side + wakeY * .36) * pressure;
+          const falloff = 1 - distanceSq / influenceSq;
+          const pressure = falloff * falloff * pointer.strength * (.64 + .36 * along);
+          const outward = impulse / Math.max(distance, influence * .13);
+          const side = .27 * outward;
+          goalX = (dx * outward - dy * side + pointer.flowX * .56) * pressure;
+          goalY = (dy * outward + dx * side + pointer.flowY * .56) * pressure;
+          rate = scatterRate;
+          pull = scatterPull;
         }
       }
 
-      // Critically damped spring: a moving target pulls on the offset and the
-      // particle keeps its momentum as the pointer leaves the canvas.
+      // The faster contact spring tracks the pointer; on exit the gentler spring retains momentum.
       if (dt > 0) {
         const dx = particle.offsetX - goalX, dy = particle.offsetY - goalY;
-        const vx = particle.speedX + 7.8 * dx, vy = particle.speedY + 7.8 * dy;
+        const vx = particle.speedX + rate * dx, vy = particle.speedY + rate * dy;
         particle.offsetX = goalX + (dx + vx * dt) * pull;
         particle.offsetY = goalY + (dy + vy * dt) * pull;
-        particle.speedX = (particle.speedX - 7.8 * vx * dt) * pull;
-        particle.speedY = (particle.speedY - 7.8 * vy * dt) * pull;
+        particle.speedX = (particle.speedX - rate * vx * dt) * pull;
+        particle.speedY = (particle.speedY - rate * vy * dt) * pull;
       }
       const screenX = px + particle.offsetX, screenY = py + particle.offsetY;
       const dx = screenX - particle.xOnScreen, dy = screenY - particle.yOnScreen;
       particle.tailX = particle.tailY = 0;
       if (dt > 0) {
-        const movement = Math.hypot(dx, dy);
-        if (movement > .3) {
+        const movementSq = dx * dx + dy * dy;
+        if (movementSq > .09) {
           const exposure = mix(.006, .012, morph);
-          const trail = Math.min(exposure / dt, 5.2 * Math.max(.72, scale) / movement);
+          const trail = Math.min(exposure / dt, 4.4 * Math.max(.72, scale) / Math.sqrt(movementSq));
           particle.tailX = dx * trail;
           particle.tailY = dy * trail;
         }
@@ -238,11 +247,11 @@ function initHelix(canvas) {
       const dots = dotBatches[index];
       const highlights = highlightBatches[index];
       const crossbars = crossbarBatches[index];
-      const diameter = detailScale * (1.25 + .74 * depth + .07 * morph);
-      strokeDots(crossbars, colorInk[color], diameter * mix(.79, 1, morph), .47 + .29 * depth + .1 * morph);
-      strokeDots(dots, colorInk[color], diameter, .49 + .4 * depth);
-      strokeDots(highlights, colorInk[color], diameter * 2.65, .12 + .08 * depth);
-      strokeDots(highlights, coreInk[color], diameter * 1.18, .66 + .32 * depth);
+      const diameter = detailScale * (1.42 + .76 * depth + .07 * morph);
+      strokeDots(crossbars, colorInk[color], diameter * mix(.74, 1, morph), .46 + .31 * depth + .12 * morph);
+      strokeDots(dots, colorInk[color], diameter, .57 + .37 * depth);
+      strokeDots(highlights, colorInk[color], diameter * 2.62, .14 + .08 * depth);
+      strokeDots(highlights, coreInk[color], diameter * 1.18, .72 + .26 * depth);
     }
     context.globalAlpha = 1;
     context.globalCompositeOperation = 'source-over';
@@ -306,38 +315,59 @@ function initHelix(canvas) {
   }
 
   function point(event) {
+    if (paused || !event.isPrimary) return;
     const bounds = canvas.getBoundingClientRect();
-    pointer.toX = event.clientX - bounds.left;
-    pointer.toY = event.clientY - bounds.top;
-    if (!pointer.inside && pointer.strength < .065) {
-      pointer.x = pointer.toX;
-      pointer.y = pointer.toY;
+    pointer.x = event.clientX - bounds.left;
+    pointer.y = event.clientY - bounds.top;
+    if (!pointer.inside) {
+      pointer.lastX = pointer.x;
+      pointer.lastY = pointer.y;
       pointer.flowX = pointer.flowY = 0;
+      pointer.strength = Math.max(.78, pointer.strength);
     }
+    if (event.type === 'pointerdown' && event.pointerType !== 'mouse') pointer.pulse = .16;
     pointer.inside = true;
   }
 
   canvas.addEventListener('pointerdown', point, { passive: true });
   canvas.addEventListener('pointermove', point, { passive: true });
-  canvas.addEventListener('pointerleave', () => { pointer.inside = false; }, { passive: true });
-  for (const name of ['pointercancel', 'pointerup']) {
-    canvas.addEventListener(name, event => {
-      if (event.pointerType !== 'mouse') pointer.inside = false;
-    }, { passive: true });
-  }
+  canvas.addEventListener('pointerleave', event => {
+    if (event.isPrimary) pointer.inside = false;
+  }, { passive: true });
+  canvas.addEventListener('pointerup', event => {
+    if (event.isPrimary && event.pointerType !== 'mouse') pointer.inside = false;
+  }, { passive: true });
+  canvas.addEventListener('pointercancel', event => {
+    if (!event.isPrimary) return;
+    pointer.inside = false;
+    pointer.pulse = 0;
+  }, { passive: true });
   if ('ResizeObserver' in window) new ResizeObserver(resize).observe(figure);
   else window.addEventListener('resize', resize);
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(([entry]) => {
       inView = entry.isIntersecting;
-      if (!inView) pointer.inside = false;
+      if (!inView) {
+        pointer.inside = false;
+        pointer.pulse = 0;
+      }
       updateAnimation();
     }).observe(figure);
   }
-  document.addEventListener('visibilitychange', updateAnimation);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      pointer.inside = false;
+      pointer.pulse = 0;
+    }
+    updateAnimation();
+  });
 
   control?.addEventListener('click', () => {
     paused = !paused;
+    if (paused) {
+      pointer.inside = false;
+      pointer.pulse = 0;
+    }
     updateAnimation();
     draw(time, 0);
     updateControl();
@@ -347,6 +377,7 @@ function initHelix(canvas) {
     if (paused) {
       time = 0;
       pointer.inside = false;
+      pointer.pulse = 0;
       pointer.strength = 0;
       pointer.flowX = pointer.flowY = 0;
       for (const particle of particles) particle.offsetX = particle.offsetY = particle.speedX = particle.speedY = 0;
