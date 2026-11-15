@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An interactive DNA double helix rendered with Canvas 2D.">
+  <meta name="color-scheme" content="dark">
+  <title>DNA Double Helix</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./helix.js" defer></script>
+</head>
+<body>
+  <main class="demo" aria-labelledby="title">
+    <h1 id="title">DNA Double Helix</h1>
+    <p id="controls-help">Move the pointer over the helix to disturb the particles. The animation can be paused and resumed.</p>
+    <figure class="molecule fallback" aria-label="Interactive three-dimensional DNA double helix">
+      <div class="molecule-grid" aria-hidden="true"></div>
+      <canvas id="dna" role="img" aria-label="Two luminous DNA strands joined by base pairs" aria-describedby="controls-help">
+        <img src="./helix-still.png" alt="A luminous DNA double helix">
+      </canvas>
+      <figcaption>
+        <button class="motion" type="button" hidden>
+          <span class="motion-symbol" aria-hidden="true"></span>
+          <span class="motion-label">Pause</span>
+        </button>
+      </figcaption>
+    </figure>
+  </main>
+</body>
+</html>
