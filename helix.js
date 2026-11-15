@@ -130,8 +130,8 @@ function initHelix(canvas) {
     const ringRadius = Math.min(width * (wide ? .375 : .412), tall * .69) * breath;
     const ringAspect = .44 + .029 * Math.sin(seconds * .62);
 
-    const impulse = 72 * scale;
-    const influence = Math.max(34, impulse);
+    const impulse = 36 * scale;
+    const influence = Math.max(17, impulse);
     const influenceSq = influence * influence;
     const stepX = pointer.x - pointer.lastX, stepY = pointer.y - pointer.lastY;
     const sweep = Math.min(1, influence * .94 / Math.max(1, Math.hypot(stepX, stepY)));
