@@ -14,15 +14,20 @@ function initHelix(canvas) {
   const pitch = 1.95 * tau;
   const radius = 74;
   const height = 347;
-  const restTime = 2.65;
+  const restTime = 0;
   const shades = [
     [86, 144, 255], [67, 201, 255], [75, 249, 210], [114, 128, 255],
     [177, 100, 255], [247, 110, 203], [255, 155, 136], [255, 209, 139],
   ];
-  const lightSprites = shades.map(lightSprite);
   const colorInk = shades.map(color => `rgb(${color.join(',')})`);
-  const ink = shades.map(color => `rgb(${color.map(channel => Math.round(mix(channel, 255, .26))).join(',')})`);
-  const coreInk = shades.map(color => `rgb(${color.map(channel => Math.round(mix(channel, 255, .57))).join(',')})`);
+  const ink = shades.map(color => `rgb(${color.map(channel => Math.round(mix(channel, 255, .31))).join(',')})`);
+  const coreInk = shades.map(color => `rgb(${color.map(channel => Math.round(mix(channel, 255, .64))).join(',')})`);
+  const depthSteps = 5;
+  const buckets = () => Array.from({ length: shades.length * depthSteps }, () => []);
+  const strandBatches = buckets();
+  const rungBatches = buckets();
+  const dotBatches = buckets();
+  const brightBatches = buckets();
   let state = 53621;
 
   function random() {
@@ -35,21 +40,15 @@ function initHelix(canvas) {
     return { x: radius * Math.cos(angle), y: height * (.5 - t), z: radius * Math.sin(angle) };
   }
 
-  function makeParticle(point, color, size, alpha, thickness, sparkle) {
-    const orbit = random() * tau;
-    const distance = 120 + 75 * random() ** .6;
+  function makeParticle(point, color, thickness, sparkle) {
     const ring = thickness * Math.sqrt(random());
     const direction = random() * tau;
     return {
       x: point.x + Math.cos(direction) * ring,
       y: point.y + (random() - .5) * ring,
       z: point.z + Math.sin(direction) * ring,
-      orbit, distance, orbitDepth: (random() - .5) * 40,
-      swirl: .68 + random() * .12,
-      color, size, alpha, phase: random() * tau,
-      sparkle,
-      offsetX: 0, offsetY: 0,
-      lastX: NaN, lastY: NaN,
+      color, phase: random() * tau, sparkle, offsetX: 0, offsetY: 0,
+      xOnScreen: 0, yOnScreen: 0, tailX: 0, tailY: 0,
     };
   }
 
@@ -59,13 +58,11 @@ function initHelix(canvas) {
 
   for (let side = 0; side < 2; side++) {
     for (let i = 0; i <= 76; i++) backbones[side].push(strand(i / 76, side));
-    for (let i = 0; i < 770; i++) {
-      const t = (i + random()) / 770;
-      const taper = .62 + .38 * Math.sin(t * Math.PI) ** .32;
-      const thickness = (7 + 17 * random() ** 1.5) * taper;
-      const sparkle = random() > .82;
-      particles.push(makeParticle(strand(t, side), strandColor(side, t), .78 + random() ** 1.8 * 1.45,
-        (.67 + random() * .33) * taper, thickness, sparkle));
+    for (let i = 0; i < 530; i++) {
+      const t = (i + random()) / 530;
+      const taper = .73 + .27 * Math.sin(t * Math.PI);
+      const thickness = (11 + 9 * random()) * taper;
+      particles.push(makeParticle(strand(t, side), strandColor(side, t), thickness, random() > .79));
     }
   }
 
@@ -78,16 +75,16 @@ function initHelix(canvas) {
     const t = (i + .5) / 22;
     const a = strand(t, 0);
     const b = strand(t, 1);
-    rungs.push({ a, b, colors: [colorInk[Math.round(2 * t)], colorInk[3 + Math.round(4 * t)]] });
-    for (let j = 0; j < 19; j++) {
-      const fraction = (j + .5 + (random() - .5) * .9) / 19;
+    rungs.push({ a, b, middle: { x: 0, y: a.y, z: 0 }, colors: [Math.round(2 * t), 3 + Math.round(4 * t)] });
+    for (let j = 0; j < 10; j++) {
+      const fraction = (j + .5 + (random() - .5) * .72) / 10;
       const point = { x: mix(a.x, b.x, fraction), y: a.y, z: mix(a.z, b.z, fraction) };
       const color = strandColor(fraction < .5 ? 0 : 1, t);
-      particles.push(makeParticle(point, color, .62 + random() ** 2 * .86, .36 + random() * .37, 3.8, false));
+      particles.push(makeParticle(point, color, 4.7, false));
     }
   }
 
-  const stars = Array.from({ length: 83 }, () => ({
+  const stars = Array.from({ length: 64 }, () => ({
     angle: random() * tau, distance: 98 + 167 * random() ** .7,
     drift: .042 * (2 * random() - 1), radius: .31 + random() ** 2 * .77,
     alpha: .17 + .45 * random() ** 2, phase: random() * tau,
@@ -96,213 +93,182 @@ function initHelix(canvas) {
   let tall = 1;
   let scale = 1;
   let wide = false;
-  let nebula;
-  let time = motionPreference.matches ? restTime : 0;
+  let time = restTime;
   let frameId = 0;
   let previousFrame = 0;
   let paused = motionPreference.matches;
   let inView = true;
   let chinese = false;
 
-  function lightSprite(color) {
-    const size = 44;
-    const sprite = document.createElement('canvas');
-    sprite.width = sprite.height = size;
-    const ink = sprite.getContext('2d');
-    const half = size / 2;
-    const [r, g, b] = color;
-    const light = ink.createRadialGradient(half, half, 0, half, half, half);
-    light.addColorStop(0, `rgb(${color.map(channel => Math.round(mix(channel, 255, .72))).join(',')})`);
-    light.addColorStop(.14, `rgba(${r},${g},${b},.98)`);
-    light.addColorStop(.29, `rgba(${r},${g},${b},.52)`);
-    light.addColorStop(.54, `rgba(${r},${g},${b},.15)`);
-    light.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ink.fillStyle = light;
-    ink.fillRect(0, 0, size, size);
-    return sprite;
-  }
-
   function mix(a, b, f) { return a + (b - a) * f; }
 
-  function ease(start, end, seconds) {
-    const f = Math.max(0, Math.min(1, (seconds - start) / (end - start)));
-    return f * f * f * (f * (f * 6 - 15) + 10);
-  }
-
   function draw(seconds, dt) {
-    const phase = seconds % 14;
-    const assembly = ease(0, 1.7, seconds);
-    const spread = ease(8.6, 10.45, phase) - ease(11, 13.18, phase);
-    const morph = .11 * (1 - assembly) + .96 * spread;
-    const turn = .61 + seconds * .11 + Math.PI / 2 * (ease(2.8, 4.8, phase) + ease(5.45, 7.4, phase) + 2 * Math.floor(seconds / 14));
+    const turn = .91 + seconds * .365;
     const ca = Math.cos(turn), sa = Math.sin(turn);
-    const incline = .19 + .067 * Math.sin(seconds * .69);
+    const incline = .19 + .047 * Math.sin(seconds * .59);
     const ci = Math.cos(incline), si = Math.sin(incline);
-    const tilt = (wide ? -1.34 : -.41) + .044 * Math.sin(seconds * .69);
+    const tilt = (wide ? -1.32 : -.38) + .065 * Math.sin(seconds * .42);
     const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const orbitTilt = (wide ? .26 : .43) + .071 * Math.sin(seconds * .53);
-    const co = Math.cos(orbitTilt), so = Math.sin(orbitTilt);
-    const breath = 1 + .017 * Math.sin(seconds * 1.1);
+    const breath = 1 + .009 * Math.sin(seconds * .96);
     const centerX = width * .5;
-    const centerY = tall * (wide ? .46 : .48) + 1.8 * Math.sin(seconds * .8);
-    const displace = (pointer.inside && !paused ? 1 : 0) - pointer.strength;
-    pointer.strength += displace * (1 - Math.exp(-8 * dt));
+    const centerY = tall * .472 + Math.sin(seconds * .72) * 1.6;
+    pointer.strength += ((pointer.inside && !paused ? 1 : 0) - pointer.strength) * (1 - Math.exp(-10 * dt));
 
-    const screen = { x: 0, y: 0, depth: 0, perspective: 1 };
-    function project(x, y, z, f = 0, orbitX = 0, orbitY = 0, orbitZ = 0) {
-      const a = x * ca + z * sa;
-      const b = z * ca - x * sa;
+    const screen = { x: 0, y: 0, depth: 0 };
+    function project(point, wiggleX = 0, wiggleY = 0) {
+      const x = point.x + wiggleX;
+      const y = point.y + wiggleY;
+      const a = x * ca + point.z * sa;
+      const b = point.z * ca - x * sa;
       const c = y * ci + b * si;
       const d = b * ci - y * si;
-      const depth = mix(d, orbitZ, f);
-      const px = mix((a * ct - c * st) * breath, orbitX, f);
-      const py = mix((a * st + c * ct) * breath, orbitY, f);
-      screen.perspective = 493 / (493 - depth);
-      screen.x = centerX + px * screen.perspective * scale;
-      screen.y = centerY - py * screen.perspective * scale;
-      screen.depth = Math.max(0, Math.min(1, (depth + 104) / 208));
+      const zoom = 520 / (520 - d) * scale * breath;
+      screen.x = centerX + (a * ct - c * st) * zoom;
+      screen.y = centerY - (a * st + c * ct) * zoom;
+      screen.depth = Math.max(0, Math.min(1, (d + 105) / 210));
       return screen;
     }
 
+    function groupIndex(color, depth) {
+      return Math.min(depthSteps - 1, Math.floor(depth * depthSteps)) * shades.length + color;
+    }
+
     context.clearRect(0, 0, width, tall);
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = .89 + .11 * Math.sin(seconds * .89);
-    context.fillStyle = nebula;
-    context.fillRect(0, 0, width, tall);
-    context.fillStyle = '#bad2ff';
-    const dustWidth = (wide ? 1.08 : .72) * scale;
-    const dustHeight = (wide ? .56 : .88) * scale;
+    context.fillStyle = '#a4bdf6';
+    const dustWidth = (wide ? 1.1 : .78) * scale;
+    const dustHeight = (wide ? .61 : .81) * scale;
     for (const star of stars) {
       const angle = star.angle + seconds * star.drift;
-      context.globalAlpha = star.alpha * (.63 + .37 * Math.sin(star.phase + seconds * 1.25));
-      context.beginPath();
-      context.arc(centerX + Math.cos(angle) * star.distance * dustWidth, centerY + Math.sin(angle) * star.distance * dustHeight,
-        star.radius, 0, tau);
-      context.fill();
+      const size = star.radius * 1.55;
+      context.globalAlpha = star.alpha * (.57 + .43 * Math.sin(star.phase + seconds * 1.22));
+      context.fillRect(centerX + Math.cos(angle) * star.distance * dustWidth,
+        centerY + Math.sin(angle) * star.distance * dustHeight, size, size);
     }
-    context.globalAlpha = 1;
 
-    context.globalCompositeOperation = 'lighter';
-    context.lineCap = 'round';
-    const bodyLight = (1 - morph) ** 3;
-    if (bodyLight > .02) {
-      for (const {a, b, colors} of rungs) {
-        const start = project(a.x, a.y, a.z);
-        const ax = start.x, ay = start.y, depth = start.depth;
-        const end = project(b.x, b.y, b.z);
-        const depthWeight = (depth + end.depth) / 2;
-        const length = Math.hypot(end.x - ax, end.y - ay);
-        const visibility = bodyLight * Math.min(1, length / 15);
-        if (visibility <= .04) continue;
-        const tint = context.createLinearGradient(ax, ay, end.x, end.y);
-        tint.addColorStop(0, colors[0]);
-        tint.addColorStop(.5, '#d1ddff');
-        tint.addColorStop(1, colors[1]);
-        context.strokeStyle = tint;
-        context.beginPath();
-        context.moveTo(ax, ay);
-        context.lineTo(end.x, end.y);
-        context.lineWidth = Math.max(2.4, (3 + 2 * depthWeight) * scale);
-        context.globalAlpha = visibility * (.07 + .08 * depthWeight);
-        context.stroke();
-        context.lineWidth = Math.max(.85, (1.1 + .7 * depthWeight) * scale);
-        context.globalAlpha = visibility * (.29 + .36 * depthWeight);
-        context.stroke();
-      }
-      for (const [side, points] of backbones.entries()) {
-        let previousX, previousY, previousDepth;
-        for (const [index, point] of points.entries()) {
-          const p = project(point.x, point.y, point.z);
-          if (index > 0) {
-            const fraction = index / (points.length - 1);
-            const color = side ? 3 + Math.round(fraction * 4) : Math.round(fraction * 2);
-            const depth = (previousDepth + p.depth) / 2;
-            const taper = .76 + .24 * Math.sin(fraction * Math.PI);
-            context.beginPath();
-            context.moveTo(previousX, previousY);
-            context.lineTo(p.x, p.y);
-            context.strokeStyle = colorInk[color];
-            context.lineWidth = Math.max(3.1, (6.8 + 5.1 * depth) * scale * taper);
-            context.globalAlpha = bodyLight * (.07 + .15 * depth);
-            context.stroke();
-            context.strokeStyle = coreInk[color];
-            context.lineWidth = Math.max(1, (1.45 + 1.75 * depth) * scale * taper);
-            context.globalAlpha = bodyLight * (.41 + .5 * depth);
-            context.stroke();
-          }
-          previousX = p.x;
-          previousY = p.y;
-          previousDepth = p.depth;
+    for (const group of strandBatches) group.length = 0;
+    for (const group of rungBatches) group.length = 0;
+    for (const group of dotBatches) group.length = 0;
+    for (const group of brightBatches) group.length = 0;
+
+    for (const {a, b, middle, colors} of rungs) {
+      const start = project(a);
+      const ax = start.x, ay = start.y, ad = start.depth;
+      const joint = project(middle);
+      const jx = joint.x, jy = joint.y, jd = joint.depth;
+      const end = project(b);
+      const first = rungBatches[groupIndex(colors[0], (ad + jd) * .5)];
+      const second = rungBatches[groupIndex(colors[1], (end.depth + jd) * .5)];
+      first.push(ax, ay, jx, jy);
+      second.push(jx, jy, end.x, end.y);
+    }
+
+    for (let side = 0; side < backbones.length; side++) {
+      const points = backbones[side];
+      let lastX, lastY, lastDepth;
+      for (let index = 0; index < points.length; index++) {
+        const p = project(points[index]);
+        if (index > 0) {
+          const u = index / (points.length - 1);
+          const color = side ? 3 + Math.round(u * 4) : Math.round(u * 2);
+          strandBatches[groupIndex(color, (lastDepth + p.depth) * .5)].push(lastX, lastY, p.x, p.y);
         }
+        lastX = p.x;
+        lastY = p.y;
+        lastDepth = p.depth;
       }
     }
-    const repel = Math.max(33, 68 * scale);
-    const count = width < 420 ? 1560 : particles.length;
-    const returnFactor = dt > 0 ? 1 - Math.exp(-12 * dt) : 0;
-    const tailMinimum = Math.max(.76, scale);
-    const maxTail = 12 * scale;
-    for (let i = 0; i < count; i++) {
-      const particle = particles[Math.floor(i * particles.length / count)];
-      let orbitX = 0, orbitY = 0, orbitDepth = 0;
-      if (morph > .001) {
-        const angle = particle.orbit + seconds * particle.swirl - (1 - assembly) * 1.8;
-        const along = particle.distance * Math.cos(angle);
-        const across = particle.distance * Math.sin(angle);
-        orbitX = along * co - across * .43 * so;
-        orbitY = along * so + across * .43 * co;
-        orbitDepth = across * .29 + particle.orbitDepth;
-      }
-      const p = project(
-        particle.x + 1.61 * Math.sin(seconds * 1.7 + particle.phase),
-        particle.y + 1.17 * Math.sin(seconds * 1.2 + particle.phase),
-        particle.z, morph, orbitX, orbitY, orbitDepth
-      );
-      let targetX = 0, targetY = 0;
-      if (pointer.strength > .002) {
-        const px = p.x - pointer.x, py = p.y - pointer.y;
-        const distanceSquared = px * px + py * py;
-        if (distanceSquared > .01 && distanceSquared < repel * repel) {
-          const distance = Math.sqrt(distanceSquared);
-          const shift = (1 - distance / repel) ** 2 * pointer.strength * 57 * scale / distance;
-          targetX = px * shift;
-          targetY = py * shift;
+
+    const repel = Math.max(32, 62 * scale);
+    const strength = pointer.strength;
+    const response = 1 - Math.exp(-14 * dt);
+    const count = width < 420 ? 940 : particles.length;
+    for (let index = 0; index < count; index++) {
+      const particle = particles[Math.floor(index * particles.length / count)];
+      const p = project(particle, Math.sin(seconds * 1.9 + particle.phase) * 1.43,
+        Math.sin(seconds * 1.45 + particle.phase) * 1.08);
+      let offsetX = 0, offsetY = 0;
+      if (strength > .003) {
+        const dx = p.x - pointer.x, dy = p.y - pointer.y;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq > .01 && distanceSq < repel * repel) {
+          const distance = Math.sqrt(distanceSq);
+          const falloff = 1 - distance / repel;
+          const push = falloff * falloff * strength * 53 * scale / distance;
+          offsetX = dx * push;
+          offsetY = dy * push;
         }
       }
-      particle.offsetX += (targetX - particle.offsetX) * returnFactor;
-      particle.offsetY += (targetY - particle.offsetY) * returnFactor;
+      particle.offsetX += (offsetX - particle.offsetX) * response;
+      particle.offsetY += (offsetY - particle.offsetY) * response;
+
       const x = p.x + particle.offsetX, y = p.y + particle.offsetY;
-      const brightness = Math.min(1, particle.alpha * (.66 + .78 * p.depth) * (.89 + .11 * Math.sin(seconds * 2.2 + particle.phase)));
-      const core = Math.max(1.12, particle.size * (1.02 + .48 * p.depth) * scale * p.perspective);
-      const sparkle = particle.sparkle && p.depth > .37;
-      const diameter = core * (sparkle ? 7.1 : 4.85);
-      context.globalAlpha = brightness;
-      context.drawImage(lightSprites[particle.color], x - diameter / 2, y - diameter / 2, diameter, diameter);
-      if (sparkle) {
-        context.globalAlpha = brightness * .79;
-        context.fillStyle = coreInk[particle.color];
-        context.beginPath();
-        context.arc(x, y, Math.max(.48, core * .41), 0, tau);
-        context.fill();
-      }
-      if (dt > 0 && Number.isFinite(particle.lastX)) {
-        const dx = x - particle.lastX, dy = y - particle.lastY;
-        const speedSquared = dx * dx + dy * dy;
-        if (speedSquared > tailMinimum * tailMinimum) {
-          const tail = Math.min(1, maxTail / Math.sqrt(speedSquared));
-          context.globalAlpha = brightness * .31;
-          context.strokeStyle = ink[particle.color];
-          context.lineWidth = Math.max(.56, core * .68);
-          context.beginPath();
-          context.moveTo(x - dx * tail, y - dy * tail);
-          context.lineTo(x, y);
-          context.stroke();
+      const dx = x - particle.xOnScreen, dy = y - particle.yOnScreen;
+      particle.tailX = particle.tailY = 0;
+      if (dt > 0) {
+        const tailSq = dx * dx + dy * dy;
+        if (tailSq > .23 && tailSq < 100) {
+          particle.tailX = dx * .58;
+          particle.tailY = dy * .58;
         }
       }
-      particle.lastX = x;
-      particle.lastY = y;
+      particle.xOnScreen = x;
+      particle.yOnScreen = y;
+
+      const glowing = particle.sparkle && Math.sin(seconds * 1.3 + particle.phase) > -.66;
+      const group = groupIndex(particle.color, p.depth);
+      (glowing ? brightBatches[group] : dotBatches[group]).push(particle);
+    }
+
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.globalCompositeOperation = 'lighter';
+    const detailScale = Math.max(.78, Math.min(1.55, scale));
+    for (let index = 0; index < strandBatches.length; index++) {
+      const color = index % shades.length;
+      const depth = Math.floor(index / shades.length) / (depthSteps - 1);
+      strokeSegments(rungBatches[index], ink[color], detailScale * (1.05 + .52 * depth), .30 + .25 * depth);
+      strokeSegments(strandBatches[index], colorInk[color], detailScale * (3.4 + 1.95 * depth), .067 + .1 * depth, true);
+      strokeSegments(strandBatches[index], ink[color], detailScale * (1.11 + .85 * depth), .38 + .38 * depth, true);
+    }
+    for (let index = 0; index < dotBatches.length; index++) {
+      const color = index % shades.length;
+      const depth = Math.floor(index / shades.length) / (depthSteps - 1);
+      const dots = dotBatches[index], highlights = brightBatches[index];
+      const diameter = detailScale * (1.06 + .77 * depth);
+      if (highlights.length) strokeDots(highlights, colorInk[color], diameter * 2.9, .09 + .09 * depth);
+      if (dots.length) strokeDots(dots, colorInk[color], diameter, .40 + .46 * depth);
+      if (highlights.length) strokeDots(highlights, coreInk[color], diameter * 1.22, .63 + .34 * depth);
     }
     context.globalAlpha = 1;
     context.globalCompositeOperation = 'source-over';
+  }
+
+  function strokeSegments(segments, tint, width, opacity, join = false) {
+    if (!segments.length) return;
+    context.beginPath();
+    let lastX, lastY;
+    for (let i = 0; i < segments.length; i += 4) {
+      if (!join || segments[i] !== lastX || segments[i + 1] !== lastY) context.moveTo(segments[i], segments[i + 1]);
+      lastX = segments[i + 2];
+      lastY = segments[i + 3];
+      context.lineTo(lastX, lastY);
+    }
+    context.strokeStyle = tint;
+    context.lineWidth = width;
+    context.globalAlpha = opacity;
+    context.stroke();
+  }
+
+  function strokeDots(dots, tint, width, opacity) {
+    context.beginPath();
+    for (const dot of dots) {
+      context.moveTo(dot.xOnScreen - dot.tailX, dot.yOnScreen - dot.tailY);
+      context.lineTo(dot.xOnScreen + .015, dot.yOnScreen);
+    }
+    context.strokeStyle = tint;
+    context.lineWidth = width;
+    context.globalAlpha = opacity;
+    context.stroke();
   }
 
   function resize() {
@@ -310,18 +276,18 @@ function initHelix(canvas) {
     tall = Math.max(1, canvas.clientHeight);
     wide = width / tall > 1.52;
     scale = Math.min(width / (wide ? 413 : 354), tall / (wide ? 294 : 437));
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.8);
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.sqrt(820000 / (width * tall)));
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(tall * ratio);
     context.setTransform(canvas.width / width, 0, 0, canvas.height / tall, 0, 0);
-    nebula = context.createRadialGradient(width / 2, tall * .48, 0, width / 2, tall * .48, Math.min(width * .46, tall * .47));
-    nebula.addColorStop(0, 'rgba(48,65,200,.18)');
-    nebula.addColorStop(.47, 'rgba(62,39,155,.073)');
-    nebula.addColorStop(1, 'rgba(18,18,60,0)');
     draw(time, 0);
   }
 
   function tick(stamp) {
+    if (previousFrame && stamp - previousFrame < 11.4) {
+      frameId = requestAnimationFrame(tick);
+      return;
+    }
     const dt = previousFrame ? Math.min(.05, (stamp - previousFrame) / 1000) : 0;
     previousFrame = stamp;
     time += dt;
@@ -376,7 +342,6 @@ function initHelix(canvas) {
 
   control?.addEventListener('click', () => {
     paused = !paused;
-    if (paused && time < 1.7) time = restTime;
     updateAnimation();
     draw(time, 0);
     updateControl();
