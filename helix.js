@@ -41,13 +41,16 @@ function initHelix(canvas) {
   }
 
   function makeParticle(point, color, thickness, sparkle) {
-    const ring = thickness * Math.sqrt(random());
+    const spread = thickness * Math.sqrt(random());
     const direction = random() * tau;
+    const phase = random() * tau;
+    const orbit = .87 + .12 * Math.sin(direction + phase) + .055 * Math.cos(phase * 3);
     return {
-      x: point.x + Math.cos(direction) * ring,
-      y: point.y + (random() - .5) * ring,
-      z: point.z + Math.sin(direction) * ring,
-      color, phase: random() * tau, sparkle, offsetX: 0, offsetY: 0,
+      x: point.x + Math.cos(direction) * spread,
+      y: point.y + (random() - .5) * spread,
+      z: point.z + Math.sin(direction) * spread,
+      orbitX: orbit * Math.cos(phase), orbitY: orbit * Math.sin(phase),
+      color, phase, sparkle, offsetX: 0, offsetY: 0,
       xOnScreen: 0, yOnScreen: 0, tailX: 0, tailY: 0,
     };
   }
@@ -102,16 +105,30 @@ function initHelix(canvas) {
 
   function mix(a, b, f) { return a + (b - a) * f; }
 
+  function ease(start, end, time) {
+    const u = Math.min(1, Math.max(0, (time - start) / (end - start)));
+    return u * u * u * (10 - 15 * u + 6 * u * u);
+  }
+
   function draw(seconds, dt) {
+    const phase = seconds % 14;
+    const morph = ease(6.75, 9.25, phase) - ease(10.9, 13.28, phase);
+    const structure = (1 - morph) ** 3;
     const turn = .91 + seconds * .365;
     const ca = Math.cos(turn), sa = Math.sin(turn);
     const incline = .19 + .047 * Math.sin(seconds * .59);
     const ci = Math.cos(incline), si = Math.sin(incline);
     const tilt = (wide ? -1.32 : -.38) + .065 * Math.sin(seconds * .42);
     const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const breath = 1 + .009 * Math.sin(seconds * .96);
+    const breath = 1 + .019 * Math.sin(seconds * 1.06);
     const centerX = width * .5;
     const centerY = tall * .472 + Math.sin(seconds * .72) * 1.6;
+    const orbitTurn = seconds * .68;
+    const orbitCos = Math.cos(orbitTurn), orbitSin = Math.sin(orbitTurn);
+    const ringTilt = -.29 + .067 * Math.sin(seconds * .48);
+    const ringCos = Math.cos(ringTilt), ringSin = Math.sin(ringTilt);
+    const ringRadius = Math.min(width * (wide ? .375 : .412), tall * .69) * breath;
+    const ringAspect = .44 + .035 * Math.sin(seconds * .62);
     pointer.strength += ((pointer.inside && !paused ? 1 : 0) - pointer.strength) * (1 - Math.exp(-10 * dt));
 
     const screen = { x: 0, y: 0, depth: 0 };
@@ -150,31 +167,30 @@ function initHelix(canvas) {
     for (const group of dotBatches) group.length = 0;
     for (const group of brightBatches) group.length = 0;
 
-    for (const {a, b, middle, colors} of rungs) {
-      const start = project(a);
-      const ax = start.x, ay = start.y, ad = start.depth;
-      const joint = project(middle);
-      const jx = joint.x, jy = joint.y, jd = joint.depth;
-      const end = project(b);
-      const first = rungBatches[groupIndex(colors[0], (ad + jd) * .5)];
-      const second = rungBatches[groupIndex(colors[1], (end.depth + jd) * .5)];
-      first.push(ax, ay, jx, jy);
-      second.push(jx, jy, end.x, end.y);
-    }
-
-    for (let side = 0; side < backbones.length; side++) {
-      const points = backbones[side];
-      let lastX, lastY, lastDepth;
-      for (let index = 0; index < points.length; index++) {
-        const p = project(points[index]);
-        if (index > 0) {
-          const u = index / (points.length - 1);
-          const color = side ? 3 + Math.round(u * 4) : Math.round(u * 2);
-          strandBatches[groupIndex(color, (lastDepth + p.depth) * .5)].push(lastX, lastY, p.x, p.y);
+    if (structure > .006) {
+      for (const {a, b, middle, colors} of rungs) {
+        const start = project(a);
+        const ax = start.x, ay = start.y, ad = start.depth;
+        const joint = project(middle);
+        const jx = joint.x, jy = joint.y, jd = joint.depth;
+        const end = project(b);
+        rungBatches[groupIndex(colors[0], (ad + jd) * .5)].push(ax, ay, jx, jy);
+        rungBatches[groupIndex(colors[1], (end.depth + jd) * .5)].push(jx, jy, end.x, end.y);
+      }
+      for (let side = 0; side < backbones.length; side++) {
+        const points = backbones[side];
+        let lastX, lastY, lastDepth;
+        for (let index = 0; index < points.length; index++) {
+          const p = project(points[index]);
+          if (index > 0) {
+            const u = index / (points.length - 1);
+            const color = side ? 3 + Math.round(u * 4) : Math.round(u * 2);
+            strandBatches[groupIndex(color, (lastDepth + p.depth) * .5)].push(lastX, lastY, p.x, p.y);
+          }
+          lastX = p.x;
+          lastY = p.y;
+          lastDepth = p.depth;
         }
-        lastX = p.x;
-        lastY = p.y;
-        lastDepth = p.depth;
       }
     }
 
@@ -186,6 +202,15 @@ function initHelix(canvas) {
       const particle = particles[Math.floor(index * particles.length / count)];
       const p = project(particle, Math.sin(seconds * 1.9 + particle.phase) * 1.43,
         Math.sin(seconds * 1.45 + particle.phase) * 1.08);
+      if (morph > 0) {
+        const along = particle.orbitX * orbitCos - particle.orbitY * orbitSin;
+        const across = particle.orbitX * orbitSin + particle.orbitY * orbitCos;
+        const ringX = centerX + (along * ringCos - across * ringAspect * ringSin) * ringRadius;
+        const ringY = centerY + (along * ringSin + across * ringAspect * ringCos) * ringRadius;
+        p.x = mix(p.x, ringX, morph);
+        p.y = mix(p.y, ringY, morph);
+        p.depth = mix(p.depth, .52 + .42 * across, morph);
+      }
       let offsetX = 0, offsetY = 0;
       if (strength > .003) {
         const dx = p.x - pointer.x, dy = p.y - pointer.y;
@@ -206,9 +231,10 @@ function initHelix(canvas) {
       particle.tailX = particle.tailY = 0;
       if (dt > 0) {
         const tailSq = dx * dx + dy * dy;
-        if (tailSq > .23 && tailSq < 100) {
-          particle.tailX = dx * .58;
-          particle.tailY = dy * .58;
+        if (tailSq > .18) {
+          const trail = Math.min(.72, 8 * Math.max(.75, scale) / Math.sqrt(tailSq));
+          particle.tailX = dx * trail;
+          particle.tailY = dy * trail;
         }
       }
       particle.xOnScreen = x;
@@ -226,16 +252,16 @@ function initHelix(canvas) {
     for (let index = 0; index < strandBatches.length; index++) {
       const color = index % shades.length;
       const depth = Math.floor(index / shades.length) / (depthSteps - 1);
-      strokeSegments(rungBatches[index], ink[color], detailScale * (1.05 + .52 * depth), .30 + .25 * depth);
-      strokeSegments(strandBatches[index], colorInk[color], detailScale * (3.4 + 1.95 * depth), .067 + .1 * depth, true);
-      strokeSegments(strandBatches[index], ink[color], detailScale * (1.11 + .85 * depth), .38 + .38 * depth, true);
+      strokeSegments(rungBatches[index], ink[color], detailScale * (1.05 + .52 * depth), structure * (.30 + .25 * depth));
+      strokeSegments(strandBatches[index], colorInk[color], detailScale * (3.4 + 1.95 * depth), structure * (.067 + .1 * depth), true);
+      strokeSegments(strandBatches[index], ink[color], detailScale * (1.11 + .85 * depth), structure * (.38 + .38 * depth), true);
     }
     for (let index = 0; index < dotBatches.length; index++) {
       const color = index % shades.length;
       const depth = Math.floor(index / shades.length) / (depthSteps - 1);
       const dots = dotBatches[index], highlights = brightBatches[index];
-      const diameter = detailScale * (1.06 + .77 * depth);
-      if (highlights.length) strokeDots(highlights, colorInk[color], diameter * 2.9, .09 + .09 * depth);
+      const diameter = detailScale * (1.06 + .77 * depth + .1 * morph);
+      if (highlights.length) strokeDots(highlights, colorInk[color], diameter * 2.9, .09 + .09 * depth + .045 * morph);
       if (dots.length) strokeDots(dots, colorInk[color], diameter, .40 + .46 * depth);
       if (highlights.length) strokeDots(highlights, coreInk[color], diameter * 1.22, .63 + .34 * depth);
     }
@@ -276,7 +302,7 @@ function initHelix(canvas) {
     tall = Math.max(1, canvas.clientHeight);
     wide = width / tall > 1.52;
     scale = Math.min(width / (wide ? 413 : 354), tall / (wide ? 294 : 437));
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.sqrt(820000 / (width * tall)));
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.max(1, Math.sqrt(820000 / (width * tall))));
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(tall * ratio);
     context.setTransform(canvas.width / width, 0, 0, canvas.height / tall, 0, 0);
@@ -348,7 +374,12 @@ function initHelix(canvas) {
   });
   motionPreference.addEventListener('change', event => {
     paused = event.matches;
-    if (paused) time = restTime;
+    if (paused) {
+      time = restTime;
+      pointer.inside = false;
+      pointer.strength = 0;
+      for (const particle of particles) particle.offsetX = particle.offsetY = 0;
+    }
     updateAnimation();
     draw(time, 0);
     updateControl();

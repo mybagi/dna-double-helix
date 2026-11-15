@@ -1,6 +1,6 @@
 # DNA Double Helix
 
-A standalone Canvas 2D visualization of a rotating DNA double helix. Move the pointer over the helix or tap it to disturb the particles. The playback button pauses and resumes the animation. The visualization pauses when it leaves the viewport or its tab becomes hidden, and it respects the system’s reduced-motion preference.
+A standalone Canvas 2D visualization of a DNA double helix that turns into a rotating particle ring and reassembles in a continuous loop. Move the pointer over the helix or tap it to disturb the particles. The playback button pauses and resumes the animation. The visualization pauses when it leaves the viewport or its tab becomes hidden, and it respects the system’s reduced-motion preference.
 
 ## Run locally
 
