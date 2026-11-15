@@ -9,30 +9,38 @@ function initHelix(canvas) {
   const control = figure.querySelector('.motion');
   const controlLabel = control?.querySelector('.motion-label');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
-  const pointer = { x: -1000, y: -1000, strength: 0, inside: false };
+  const pointer = { x: 0, y: 0, toX: 0, toY: 0, flowX: 0, flowY: 0, strength: 0, inside: false };
   const tau = Math.PI * 2;
   const pitch = 1.95 * tau;
   const radius = 74;
   const height = 347;
-  const restTime = 0;
   const shades = [
-    [86, 144, 255], [67, 201, 255], [75, 249, 210], [114, 128, 255],
-    [177, 100, 255], [247, 110, 203], [255, 155, 136], [255, 209, 139],
+    [86, 144, 255], [74, 195, 255], [73, 247, 218], [122, 132, 255],
+    [175, 112, 255], [244, 115, 212], [255, 151, 143], [255, 209, 139],
   ];
-  const colorInk = shades.map(color => `rgb(${color.join(',')})`);
-  const ink = shades.map(color => `rgb(${color.map(channel => Math.round(mix(channel, 255, .31))).join(',')})`);
-  const coreInk = shades.map(color => `rgb(${color.map(channel => Math.round(mix(channel, 255, .64))).join(',')})`);
+  const colorInk = shades.map(color => colorString(color, .06));
+  const coreInk = shades.map(color => colorString(color, .47));
   const depthSteps = 5;
-  const buckets = () => Array.from({ length: shades.length * depthSteps }, () => []);
-  const strandBatches = buckets();
-  const rungBatches = buckets();
-  const dotBatches = buckets();
-  const brightBatches = buckets();
+  const makeBatches = () => Array.from({ length: shades.length * depthSteps }, () => []);
+  const dotBatches = makeBatches();
+  const highlightBatches = makeBatches();
+  const crossbarBatches = makeBatches();
   let state = 53621;
+
+  function mix(a, b, f) { return a + (b - a) * f; }
+
+  function colorString(color, lift) {
+    return 'rgb(' + color.map(channel => Math.round(mix(channel, 255, lift))).join(',') + ')';
+  }
 
   function random() {
     state = (Math.imul(1664525, state) + 1013904223) >>> 0;
     return state / 4294967296;
+  }
+
+  function ease(start, end, time) {
+    const u = Math.min(1, Math.max(0, (time - start) / (end - start)));
+    return u * u * u * (10 - 15 * u + 6 * u * u);
   }
 
   function strand(t, side) {
@@ -40,259 +48,215 @@ function initHelix(canvas) {
     return { x: radius * Math.cos(angle), y: height * (.5 - t), z: radius * Math.sin(angle) };
   }
 
-  function makeParticle(point, color, thickness, sparkle) {
+  function strandColor(side, t) {
+    const position = side === 0 ? 2.4 * t : 3.1 + 3.85 * t;
+    return Math.min(7, Math.max(0, Math.round(position + (random() - .5) * 1.45)));
+  }
+
+  function makeParticle(point, color, thickness, isCrossbar) {
     const spread = thickness * Math.sqrt(random());
     const direction = random() * tau;
     const phase = random() * tau;
-    const orbit = .87 + .12 * Math.sin(direction + phase) + .055 * Math.cos(phase * 3);
+    const orbit = .91 + (random() - .5) * .2;
     return {
       x: point.x + Math.cos(direction) * spread,
       y: point.y + (random() - .5) * spread,
       z: point.z + Math.sin(direction) * spread,
       orbitX: orbit * Math.cos(phase), orbitY: orbit * Math.sin(phase),
-      color, phase, sparkle, offsetX: 0, offsetY: 0,
+      color, phase, isCrossbar, bright: random() > .74,
+      offsetX: 0, offsetY: 0, speedX: 0, speedY: 0,
       xOnScreen: 0, yOnScreen: 0, tailX: 0, tailY: 0,
     };
   }
 
   const particles = [];
-  const backbones = [[], []];
-  const rungs = [];
-
+  const strandCount = 1040;
   for (let side = 0; side < 2; side++) {
-    for (let i = 0; i <= 76; i++) backbones[side].push(strand(i / 76, side));
-    for (let i = 0; i < 530; i++) {
-      const t = (i + random()) / 530;
-      const taper = .73 + .27 * Math.sin(t * Math.PI);
-      const thickness = (11 + 9 * random()) * taper;
-      particles.push(makeParticle(strand(t, side), strandColor(side, t), thickness, random() > .79));
+    for (let index = 0; index < strandCount; index++) {
+      const t = (index + random()) / strandCount;
+      const taper = .76 + .24 * Math.sin(t * Math.PI);
+      const thickness = (6 + 16 * random() ** 1.4) * taper;
+      particles.push(makeParticle(strand(t, side), strandColor(side, t), thickness, false));
     }
   }
 
-  function strandColor(side, t) {
-    const position = side === 0 ? 2.4 * t : 3.15 + 3.65 * t;
-    return Math.min(7, Math.max(0, Math.round(position + (random() - .5) * 1.58)));
-  }
-
-  for (let i = 0; i < 22; i++) {
-    const t = (i + .5) / 22;
-    const a = strand(t, 0);
-    const b = strand(t, 1);
-    rungs.push({ a, b, middle: { x: 0, y: a.y, z: 0 }, colors: [Math.round(2 * t), 3 + Math.round(4 * t)] });
-    for (let j = 0; j < 10; j++) {
-      const fraction = (j + .5 + (random() - .5) * .72) / 10;
-      const point = { x: mix(a.x, b.x, fraction), y: a.y, z: mix(a.z, b.z, fraction) };
-      const color = strandColor(fraction < .5 ? 0 : 1, t);
-      particles.push(makeParticle(point, color, 4.7, false));
+  const pairs = 24;
+  const pointsPerPair = 26;
+  for (let index = 0; index < pairs; index++) {
+    const t = (index + .5) / pairs;
+    const a = strand(t, 0), b = strand(t, 1);
+    for (let dot = 0; dot < pointsPerPair; dot++) {
+      const q = (dot + .5 + (random() - .5) * .84) / pointsPerPair;
+      const point = { x: mix(a.x, b.x, q), y: a.y, z: mix(a.z, b.z, q) };
+      const color = strandColor(q < .5 ? 0 : 1, t);
+      particles.push(makeParticle(point, color, 5.1, true));
     }
   }
 
-  const stars = Array.from({ length: 64 }, () => ({
-    angle: random() * tau, distance: 98 + 167 * random() ** .7,
-    drift: .042 * (2 * random() - 1), radius: .31 + random() ** 2 * .77,
-    alpha: .17 + .45 * random() ** 2, phase: random() * tau,
+  const stars = Array.from({ length: 70 }, () => ({
+    angle: random() * tau, distance: 100 + 164 * random() ** .7,
+    drift: .03 * (2 * random() - 1), radius: .28 + random() ** 2 * .7,
+    alpha: .14 + .38 * random() ** 2, phase: random() * tau,
   }));
   let width = 1;
   let tall = 1;
   let scale = 1;
   let wide = false;
-  let time = restTime;
+  let time = 0;
   let frameId = 0;
   let previousFrame = 0;
   let paused = motionPreference.matches;
   let inView = true;
   let chinese = false;
 
-  function mix(a, b, f) { return a + (b - a) * f; }
-
-  function ease(start, end, time) {
-    const u = Math.min(1, Math.max(0, (time - start) / (end - start)));
-    return u * u * u * (10 - 15 * u + 6 * u * u);
-  }
-
   function draw(seconds, dt) {
     const phase = seconds % 14;
     const morph = ease(6.75, 9.25, phase) - ease(10.9, 13.28, phase);
-    const structure = (1 - morph) ** 3;
-    const turn = .91 + seconds * .365;
+    const turn = .91 + seconds * .375;
     const ca = Math.cos(turn), sa = Math.sin(turn);
-    const incline = .19 + .047 * Math.sin(seconds * .59);
+    const incline = .19 + .044 * Math.sin(seconds * .59);
     const ci = Math.cos(incline), si = Math.sin(incline);
-    const tilt = (wide ? -1.32 : -.38) + .065 * Math.sin(seconds * .42);
+    const tilt = (wide ? -1.32 : -.38) + .06 * Math.sin(seconds * .42);
     const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const breath = 1 + .019 * Math.sin(seconds * 1.06);
+    const breath = 1 + .02 * Math.sin(seconds * 1.02);
     const centerX = width * .5;
     const centerY = tall * .472 + Math.sin(seconds * .72) * 1.6;
-    const orbitTurn = seconds * .68;
+    const orbitTurn = seconds * .45;
     const orbitCos = Math.cos(orbitTurn), orbitSin = Math.sin(orbitTurn);
-    const ringTilt = -.29 + .067 * Math.sin(seconds * .48);
+    const ringTilt = -.29 + .063 * Math.sin(seconds * .48);
     const ringCos = Math.cos(ringTilt), ringSin = Math.sin(ringTilt);
     const ringRadius = Math.min(width * (wide ? .375 : .412), tall * .69) * breath;
-    const ringAspect = .44 + .035 * Math.sin(seconds * .62);
-    pointer.strength += ((pointer.inside && !paused ? 1 : 0) - pointer.strength) * (1 - Math.exp(-10 * dt));
+    const ringAspect = .44 + .029 * Math.sin(seconds * .62);
 
-    const screen = { x: 0, y: 0, depth: 0 };
-    function project(point, wiggleX = 0, wiggleY = 0) {
-      const x = point.x + wiggleX;
-      const y = point.y + wiggleY;
-      const a = x * ca + point.z * sa;
-      const b = point.z * ca - x * sa;
-      const c = y * ci + b * si;
-      const d = b * ci - y * si;
-      const zoom = 520 / (520 - d) * scale * breath;
-      screen.x = centerX + (a * ct - c * st) * zoom;
-      screen.y = centerY - (a * st + c * ct) * zoom;
-      screen.depth = Math.max(0, Math.min(1, (d + 105) / 210));
-      return screen;
-    }
-
-    function groupIndex(color, depth) {
-      return Math.min(depthSteps - 1, Math.floor(depth * depthSteps)) * shades.length + color;
-    }
+    const follow = 1 - Math.exp(-13 * dt);
+    const oldX = pointer.x, oldY = pointer.y;
+    pointer.x = mix(pointer.x, pointer.toX, follow);
+    pointer.y = mix(pointer.y, pointer.toY, follow);
+    const drift = 1 - Math.exp(-7 * dt);
+    const wakeRate = dt > 0 ? .125 / dt : 0;
+    pointer.flowX = mix(pointer.flowX, (pointer.x - oldX) * wakeRate, drift);
+    pointer.flowY = mix(pointer.flowY, (pointer.y - oldY) * wakeRate, drift);
+    pointer.strength = mix(pointer.strength, pointer.inside && !paused ? 1 : 0, drift);
+    const influence = Math.max(32, 68 * scale);
+    const impulse = 38 * scale;
+    const pull = Math.exp(-7.8 * dt);
 
     context.clearRect(0, 0, width, tall);
-    context.fillStyle = '#a4bdf6';
+    context.fillStyle = '#a8c2ff';
     const dustWidth = (wide ? 1.1 : .78) * scale;
     const dustHeight = (wide ? .61 : .81) * scale;
     for (const star of stars) {
       const angle = star.angle + seconds * star.drift;
-      const size = star.radius * 1.55;
-      context.globalAlpha = star.alpha * (.57 + .43 * Math.sin(star.phase + seconds * 1.22));
+      const size = star.radius * 1.5;
+      context.globalAlpha = star.alpha * (.6 + .4 * Math.sin(star.phase + seconds * 1.22));
       context.fillRect(centerX + Math.cos(angle) * star.distance * dustWidth,
         centerY + Math.sin(angle) * star.distance * dustHeight, size, size);
     }
 
-    for (const group of strandBatches) group.length = 0;
-    for (const group of rungBatches) group.length = 0;
     for (const group of dotBatches) group.length = 0;
-    for (const group of brightBatches) group.length = 0;
+    for (const group of highlightBatches) group.length = 0;
+    for (const group of crossbarBatches) group.length = 0;
 
-    if (structure > .006) {
-      for (const {a, b, middle, colors} of rungs) {
-        const start = project(a);
-        const ax = start.x, ay = start.y, ad = start.depth;
-        const joint = project(middle);
-        const jx = joint.x, jy = joint.y, jd = joint.depth;
-        const end = project(b);
-        rungBatches[groupIndex(colors[0], (ad + jd) * .5)].push(ax, ay, jx, jy);
-        rungBatches[groupIndex(colors[1], (end.depth + jd) * .5)].push(jx, jy, end.x, end.y);
-      }
-      for (let side = 0; side < backbones.length; side++) {
-        const points = backbones[side];
-        let lastX, lastY, lastDepth;
-        for (let index = 0; index < points.length; index++) {
-          const p = project(points[index]);
-          if (index > 0) {
-            const u = index / (points.length - 1);
-            const color = side ? 3 + Math.round(u * 4) : Math.round(u * 2);
-            strandBatches[groupIndex(color, (lastDepth + p.depth) * .5)].push(lastX, lastY, p.x, p.y);
-          }
-          lastX = p.x;
-          lastY = p.y;
-          lastDepth = p.depth;
-        }
-      }
-    }
-
-    const repel = Math.max(32, 62 * scale);
-    const strength = pointer.strength;
-    const response = 1 - Math.exp(-14 * dt);
-    const count = width < 420 ? 940 : particles.length;
+    const count = width < 420 ? 1610 : particles.length;
     for (let index = 0; index < count; index++) {
       const particle = particles[Math.floor(index * particles.length / count)];
-      const p = project(particle, Math.sin(seconds * 1.9 + particle.phase) * 1.43,
-        Math.sin(seconds * 1.45 + particle.phase) * 1.08);
+      const x = particle.x + Math.sin(seconds * 1.42 + particle.phase) * 1.42;
+      const y = particle.y + Math.sin(seconds * 1.14 + particle.phase) * .88;
+      const a = x * ca + particle.z * sa;
+      const b = particle.z * ca - x * sa;
+      const c = y * ci + b * si;
+      const d = b * ci - y * si;
+      const zoom = 520 / (520 - d) * scale * breath;
+      let px = centerX + (a * ct - c * st) * zoom;
+      let py = centerY - (a * st + c * ct) * zoom;
+      let depth = Math.max(0, Math.min(1, (d + 105) / 210));
+
       if (morph > 0) {
         const along = particle.orbitX * orbitCos - particle.orbitY * orbitSin;
         const across = particle.orbitX * orbitSin + particle.orbitY * orbitCos;
         const ringX = centerX + (along * ringCos - across * ringAspect * ringSin) * ringRadius;
         const ringY = centerY + (along * ringSin + across * ringAspect * ringCos) * ringRadius;
-        p.x = mix(p.x, ringX, morph);
-        p.y = mix(p.y, ringY, morph);
-        p.depth = mix(p.depth, .52 + .42 * across, morph);
+        px = mix(px, ringX, morph);
+        py = mix(py, ringY, morph);
+        depth = mix(depth, .52 + .42 * across, morph);
       }
-      let offsetX = 0, offsetY = 0;
-      if (strength > .003) {
-        const dx = p.x - pointer.x, dy = p.y - pointer.y;
+
+      let goalX = 0, goalY = 0;
+      if (pointer.strength > .004) {
+        const dx = px - pointer.x, dy = py - pointer.y;
         const distanceSq = dx * dx + dy * dy;
-        if (distanceSq > .01 && distanceSq < repel * repel) {
+        if (distanceSq < influence * influence) {
           const distance = Math.sqrt(distanceSq);
-          const falloff = 1 - distance / repel;
-          const push = falloff * falloff * strength * 53 * scale / distance;
-          offsetX = dx * push;
-          offsetY = dy * push;
+          const falloff = 1 - distance / influence;
+          const pressure = falloff * falloff * pointer.strength;
+          const outward = impulse / Math.max(distance, influence * .16);
+          const side = .32 * outward;
+          const wakeX = Math.max(-impulse, Math.min(impulse, pointer.flowX));
+          const wakeY = Math.max(-impulse, Math.min(impulse, pointer.flowY));
+          goalX = (dx * outward - dy * side + wakeX * .36) * pressure;
+          goalY = (dy * outward + dx * side + wakeY * .36) * pressure;
         }
       }
-      particle.offsetX += (offsetX - particle.offsetX) * response;
-      particle.offsetY += (offsetY - particle.offsetY) * response;
 
-      const x = p.x + particle.offsetX, y = p.y + particle.offsetY;
-      const dx = x - particle.xOnScreen, dy = y - particle.yOnScreen;
+      // Critically damped spring: a moving target pulls on the offset and the
+      // particle keeps its momentum as the pointer leaves the canvas.
+      if (dt > 0) {
+        const dx = particle.offsetX - goalX, dy = particle.offsetY - goalY;
+        const vx = particle.speedX + 7.8 * dx, vy = particle.speedY + 7.8 * dy;
+        particle.offsetX = goalX + (dx + vx * dt) * pull;
+        particle.offsetY = goalY + (dy + vy * dt) * pull;
+        particle.speedX = (particle.speedX - 7.8 * vx * dt) * pull;
+        particle.speedY = (particle.speedY - 7.8 * vy * dt) * pull;
+      }
+      const screenX = px + particle.offsetX, screenY = py + particle.offsetY;
+      const dx = screenX - particle.xOnScreen, dy = screenY - particle.yOnScreen;
       particle.tailX = particle.tailY = 0;
       if (dt > 0) {
-        const tailSq = dx * dx + dy * dy;
-        if (tailSq > .18) {
-          const trail = Math.min(.72, 8 * Math.max(.75, scale) / Math.sqrt(tailSq));
+        const movement = Math.hypot(dx, dy);
+        if (movement > .3) {
+          const exposure = mix(.006, .012, morph);
+          const trail = Math.min(exposure / dt, 5.2 * Math.max(.72, scale) / movement);
           particle.tailX = dx * trail;
           particle.tailY = dy * trail;
         }
       }
-      particle.xOnScreen = x;
-      particle.yOnScreen = y;
+      particle.xOnScreen = screenX;
+      particle.yOnScreen = screenY;
 
-      const glowing = particle.sparkle && Math.sin(seconds * 1.3 + particle.phase) > -.66;
-      const group = groupIndex(particle.color, p.depth);
-      (glowing ? brightBatches[group] : dotBatches[group]).push(particle);
+      const group = Math.min(depthSteps - 1, Math.floor(depth * depthSteps)) * shades.length + particle.color;
+      if (particle.isCrossbar) crossbarBatches[group].push(particle);
+      else if (particle.bright) highlightBatches[group].push(particle);
+      else dotBatches[group].push(particle);
     }
 
     context.lineCap = 'round';
-    context.lineJoin = 'round';
     context.globalCompositeOperation = 'lighter';
-    const detailScale = Math.max(.78, Math.min(1.55, scale));
-    for (let index = 0; index < strandBatches.length; index++) {
-      const color = index % shades.length;
-      const depth = Math.floor(index / shades.length) / (depthSteps - 1);
-      strokeSegments(rungBatches[index], ink[color], detailScale * (1.05 + .52 * depth), structure * (.30 + .25 * depth));
-      strokeSegments(strandBatches[index], colorInk[color], detailScale * (3.4 + 1.95 * depth), structure * (.067 + .1 * depth), true);
-      strokeSegments(strandBatches[index], ink[color], detailScale * (1.11 + .85 * depth), structure * (.38 + .38 * depth), true);
-    }
+    const detailScale = Math.max(.8, Math.min(1.7, scale));
     for (let index = 0; index < dotBatches.length; index++) {
       const color = index % shades.length;
       const depth = Math.floor(index / shades.length) / (depthSteps - 1);
-      const dots = dotBatches[index], highlights = brightBatches[index];
-      const diameter = detailScale * (1.06 + .77 * depth + .1 * morph);
-      if (highlights.length) strokeDots(highlights, colorInk[color], diameter * 2.9, .09 + .09 * depth + .045 * morph);
-      if (dots.length) strokeDots(dots, colorInk[color], diameter, .40 + .46 * depth);
-      if (highlights.length) strokeDots(highlights, coreInk[color], diameter * 1.22, .63 + .34 * depth);
+      const dots = dotBatches[index];
+      const highlights = highlightBatches[index];
+      const crossbars = crossbarBatches[index];
+      const diameter = detailScale * (1.25 + .74 * depth + .07 * morph);
+      strokeDots(crossbars, colorInk[color], diameter * mix(.79, 1, morph), .47 + .29 * depth + .1 * morph);
+      strokeDots(dots, colorInk[color], diameter, .49 + .4 * depth);
+      strokeDots(highlights, colorInk[color], diameter * 2.65, .12 + .08 * depth);
+      strokeDots(highlights, coreInk[color], diameter * 1.18, .66 + .32 * depth);
     }
     context.globalAlpha = 1;
     context.globalCompositeOperation = 'source-over';
   }
 
-  function strokeSegments(segments, tint, width, opacity, join = false) {
-    if (!segments.length) return;
-    context.beginPath();
-    let lastX, lastY;
-    for (let i = 0; i < segments.length; i += 4) {
-      if (!join || segments[i] !== lastX || segments[i + 1] !== lastY) context.moveTo(segments[i], segments[i + 1]);
-      lastX = segments[i + 2];
-      lastY = segments[i + 3];
-      context.lineTo(lastX, lastY);
-    }
-    context.strokeStyle = tint;
-    context.lineWidth = width;
-    context.globalAlpha = opacity;
-    context.stroke();
-  }
-
-  function strokeDots(dots, tint, width, opacity) {
+  function strokeDots(dots, tint, diameter, opacity) {
+    if (!dots.length) return;
     context.beginPath();
     for (const dot of dots) {
       context.moveTo(dot.xOnScreen - dot.tailX, dot.yOnScreen - dot.tailY);
       context.lineTo(dot.xOnScreen + .015, dot.yOnScreen);
     }
     context.strokeStyle = tint;
-    context.lineWidth = width;
+    context.lineWidth = diameter;
     context.globalAlpha = opacity;
     context.stroke();
   }
@@ -343,24 +307,30 @@ function initHelix(canvas) {
 
   function point(event) {
     const bounds = canvas.getBoundingClientRect();
-    pointer.x = event.clientX - bounds.left;
-    pointer.y = event.clientY - bounds.top;
+    pointer.toX = event.clientX - bounds.left;
+    pointer.toY = event.clientY - bounds.top;
+    if (!pointer.inside && pointer.strength < .065) {
+      pointer.x = pointer.toX;
+      pointer.y = pointer.toY;
+      pointer.flowX = pointer.flowY = 0;
+    }
     pointer.inside = true;
   }
 
-  canvas.addEventListener('pointerdown', point);
-  canvas.addEventListener('pointermove', point);
-  canvas.addEventListener('pointerleave', () => { pointer.inside = false; });
+  canvas.addEventListener('pointerdown', point, { passive: true });
+  canvas.addEventListener('pointermove', point, { passive: true });
+  canvas.addEventListener('pointerleave', () => { pointer.inside = false; }, { passive: true });
   for (const name of ['pointercancel', 'pointerup']) {
     canvas.addEventListener(name, event => {
       if (event.pointerType !== 'mouse') pointer.inside = false;
-    });
+    }, { passive: true });
   }
   if ('ResizeObserver' in window) new ResizeObserver(resize).observe(figure);
   else window.addEventListener('resize', resize);
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(([entry]) => {
       inView = entry.isIntersecting;
+      if (!inView) pointer.inside = false;
       updateAnimation();
     }).observe(figure);
   }
@@ -375,10 +345,11 @@ function initHelix(canvas) {
   motionPreference.addEventListener('change', event => {
     paused = event.matches;
     if (paused) {
-      time = restTime;
+      time = 0;
       pointer.inside = false;
       pointer.strength = 0;
-      for (const particle of particles) particle.offsetX = particle.offsetY = 0;
+      pointer.flowX = pointer.flowY = 0;
+      for (const particle of particles) particle.offsetX = particle.offsetY = particle.speedX = particle.speedY = 0;
     }
     updateAnimation();
     draw(time, 0);
