@@ -11,7 +11,8 @@ function initHelix(canvas) {
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
   const pointer = { x: 0, y: 0, lastX: 0, lastY: 0, flowX: 0, flowY: 0, strength: 0, pulse: 0, inside: false };
   const tau = Math.PI * 2;
-  const pitch = 1.95 * tau;
+  const halfTurns = 5;
+  const pitch = halfTurns * Math.PI;
   const radius = 74;
   const height = 347;
   const shades = [
@@ -71,7 +72,7 @@ function initHelix(canvas) {
   }
 
   const particles = [];
-  const strandCount = 1320;
+  const strandCount = halfTurns * 330;
   for (let side = 0; side < 2; side++) {
     for (let index = 0; index < strandCount; index++) {
       const t = (index + random()) / strandCount;
@@ -81,7 +82,7 @@ function initHelix(canvas) {
     }
   }
 
-  const pairs = 24;
+  const pairs = halfTurns * 6;
   const pointsPerPair = 48;
   for (let index = 0; index < pairs; index++) {
     const t = (index + .5) / pairs;
@@ -166,7 +167,8 @@ function initHelix(canvas) {
     for (const group of highlightBatches) group.length = 0;
     for (const group of crossbarBatches) group.length = 0;
 
-    const count = width < 420 ? 2280 : width < 580 ? 2820 : particles.length;
+    const density = width < 420 ? .60 : width < 580 ? .744 : 1;
+    const count = Math.round(particles.length * density);
     for (let index = 0; index < count; index++) {
       const particle = particles[Math.floor(index * particles.length / count)];
       const x = particle.x + Math.sin(seconds * 1.42 + particle.phase) * 1.42;
