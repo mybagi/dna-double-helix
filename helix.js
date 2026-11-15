@@ -1,4 +1,35 @@
-initHelix(document.querySelector('#dna'))?.setLanguage(false);
+const languageSelect = document.querySelector('.language');
+const translations = Array.from(document.querySelectorAll('[data-zh]'), element => ({
+  element,
+  en: element.textContent,
+  zh: element.dataset.zh,
+}));
+const translatedAttributes = ['alt', 'aria-label', 'content'].flatMap(name => {
+  const source = `data-${name}-zh`;
+  return Array.from(document.querySelectorAll(`[${source}]`), element => ({
+    element, name, en: element.getAttribute(name), zh: element.getAttribute(source),
+  }));
+});
+let language = siteLocale.read('en');
+const scene = initHelix(document.querySelector('#dna'));
+
+function t(simplified, english) {
+  return siteLocale.text(language, simplified, english);
+}
+
+function displayLanguage() {
+  siteLocale.apply(languageSelect, language);
+  for (const { element, zh, en } of translations) element.textContent = t(zh, en);
+  for (const { element, name, zh, en } of translatedAttributes) element.setAttribute(name, t(zh, en));
+  scene?.updateControl();
+}
+
+languageSelect.addEventListener('change', () => {
+  language = languageSelect.value;
+  siteLocale.save(language);
+  displayLanguage();
+});
+displayLanguage();
 
 function initHelix(canvas) {
   const figure = canvas.closest('figure');
@@ -109,7 +140,6 @@ function initHelix(canvas) {
   let previousFrame = 0;
   let paused = motionPreference.matches;
   let inView = true;
-  let chinese = false;
 
   function draw(seconds, dt) {
     const phase = seconds % 14;
@@ -313,10 +343,13 @@ function initHelix(canvas) {
 
   function updateControl() {
     if (!control) return;
-    const label = paused ? (chinese ? '播放' : 'Play') : (chinese ? '暂停' : 'Pause');
+    const label = paused ? t('播放', 'Play') : t('暂停', 'Pause');
     if (controlLabel) controlLabel.textContent = label;
     control.setAttribute('aria-pressed', String(paused));
-    control.setAttribute('aria-label', chinese ? label + ' DNA 动画' : label + ' DNA animation');
+    const description = paused
+      ? t('播放 DNA 动画', 'Play DNA animation')
+      : t('暂停 DNA 动画', 'Pause DNA animation');
+    control.setAttribute('aria-label', description);
   }
 
   function point(event) {
@@ -395,7 +428,5 @@ function initHelix(canvas) {
   if (control) control.hidden = false;
   resize();
   updateAnimation();
-  return {
-    setLanguage(value) { chinese = value; updateControl(); },
-  };
+  return { updateControl };
 }

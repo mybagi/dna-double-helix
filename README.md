@@ -4,7 +4,9 @@ A standalone Canvas 2D visualization of a DNA double helix that turns into a rot
 
 ## Run locally
 
-Open `index.html` in a modern browser. Everything runs locally, including the fallback image. No build tools, packages, or API keys are required.
+Download or clone the repository and open `index.html` in a modern browser. Keep the files in their existing folders. The page runs offline, including the fallback image and translations.
+
+The language menu offers English, 简体中文, and 繁體中文. It starts in English and remembers your selection when the browser allows local storage.
 
 To serve the same files over HTTP, run this command in the repository directory:
 
@@ -20,3 +22,4 @@ Then open [http://localhost:8000](http://localhost:8000).
 - `styles.css` sets the panel layout and static fallback.
 - `helix.js` initializes the canvas and draws the animation.
 - `helix-still.png` is the still frame used if Canvas or JavaScript is unavailable.
+- `locale.js` manages language selection, with Traditional Chinese conversion and licenses in `vendor/`.

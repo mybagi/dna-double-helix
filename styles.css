@@ -14,12 +14,34 @@ body {
   min-height: 100vh;
   min-height: 100svh;
   margin: 0;
-  padding: clamp(1rem, 5vw, 3rem);
+  padding: clamp(1rem, 5vw, 3rem) 1.5rem;
 }
 
 .demo {
-  width: min(100%, 1102.5px);
+  width: min(100%, 840px);
   text-align: center;
+}
+
+@media (max-width: 540px) {
+  body { padding-inline: 1rem; }
+}
+
+.language-picker {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: .6rem;
+}
+
+.language {
+  min-height: 44px;
+  padding: .35rem .6rem;
+  border: 1px solid #445278;
+  border-radius: .48rem;
+  background: #121a30ee;
+  color: #dbe4ff;
+  font: inherit;
+  font-size: .82rem;
+  cursor: pointer;
 }
 
 h1 {
@@ -98,7 +120,7 @@ figcaption {
 }
 
 .motion:hover { background: #253153; }
-.motion:focus-visible { outline: 2px solid #cdd8ff; outline-offset: 3px; }
+.language:focus-visible, .motion:focus-visible { outline: 2px solid #cdd8ff; outline-offset: 3px; }
 
 .motion-symbol {
   width: .55rem;

@@ -3,20 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="An interactive DNA double helix rendered with Canvas 2D.">
+  <meta name="description" content="An interactive DNA double helix rendered with Canvas 2D." data-content-zh="用 Canvas 2D 绘制的互动式 DNA 双螺旋动画。">
   <meta name="color-scheme" content="dark">
-  <title>DNA Double Helix</title>
+  <title data-zh="DNA 双螺旋">DNA Double Helix</title>
   <link rel="stylesheet" href="./styles.css">
+  <script src="./vendor/opencc-cn2t.js" defer></script>
+  <script src="./locale.js" defer></script>
   <script src="./helix.js" defer></script>
 </head>
 <body>
   <main class="demo" aria-labelledby="title">
-    <h1 id="title">DNA Double Helix</h1>
-    <p id="controls-help">Move the pointer over the helix to disturb the particles. The animation can be paused and resumed.</p>
-    <figure class="molecule fallback" aria-label="Interactive three-dimensional DNA double helix">
+    <div class="language-picker">
+      <select class="language" aria-label="Language">
+        <option value="en" lang="en" selected>English</option>
+        <option value="zh" lang="zh-CN">简体中文</option>
+        <option value="zh-Hant" lang="zh-Hant">繁體中文</option>
+      </select>
+    </div>
+    <h1 id="title" data-zh="DNA 双螺旋">DNA Double Helix</h1>
+    <p id="controls-help" data-zh="移动指针可扰动粒子。使用动画按钮可随时暂停或继续播放。">Move the pointer over the helix to disturb the particles. The animation can be paused and resumed.</p>
+    <figure class="molecule fallback" aria-label="Interactive three-dimensional DNA double helix" data-aria-label-zh="互动式三维 DNA 双螺旋动画">
       <div class="molecule-grid" aria-hidden="true"></div>
-      <canvas id="dna" role="img" aria-label="Two luminous DNA strands joined by base pairs" aria-describedby="controls-help">
-        <img src="./helix-still.png" alt="A luminous DNA double helix">
+      <canvas id="dna" role="img" aria-label="Two luminous DNA strands joined by base pairs" data-aria-label-zh="由碱基对相连的两条发光 DNA 链" aria-describedby="controls-help">
+        <img src="./helix-still.png" alt="A luminous DNA double helix" data-alt-zh="发光的 DNA 双螺旋">
       </canvas>
       <figcaption>
         <button class="motion" type="button" hidden>
