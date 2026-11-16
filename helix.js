@@ -109,12 +109,13 @@ function initHelix(canvas) {
     const direction = random() * tau;
     const phase = random() * tau;
     const orbit = .91 + (random() - .5) * .2;
+    const phaseCos = Math.cos(phase), phaseSin = Math.sin(phase);
     return {
       x: point.x + Math.cos(direction) * spread,
       y: point.y + (random() - .5) * spread,
       z: point.z + Math.sin(direction) * spread,
-      orbitX: orbit * Math.cos(phase), orbitY: orbit * Math.sin(phase),
-      color, phase, isCrossbar, bright: random() > .69,
+      orbitX: orbit * phaseCos, orbitY: orbit * phaseSin,
+      color, phaseCos, phaseSin, isCrossbar, bright: random() > .69,
       offsetX: 0, offsetY: 0, speedX: 0, speedY: 0,
       xOnScreen: 0, yOnScreen: 0, tailX: 0, tailY: 0,
     };
@@ -156,6 +157,9 @@ function initHelix(canvas) {
   let time = 0;
   let frameId = 0;
   let previousFrame = 0;
+  let nextFrame = 0;
+  let frameInterval = 0;
+  let visibleParticles = particles;
   let paused = motionPreference.matches;
   let inView = !('IntersectionObserver' in window);
 
@@ -177,6 +181,9 @@ function initHelix(canvas) {
     const ringCos = Math.cos(ringTilt), ringSin = Math.sin(ringTilt);
     const ringRadius = Math.min(width * (wide ? .375 : .412), tall * .69) * breath;
     const ringAspect = .44 + .029 * Math.sin(seconds * .62);
+    const driftX = seconds * 1.42, driftY = seconds * 1.14;
+    const driftXSin = Math.sin(driftX), driftXCos = Math.cos(driftX);
+    const driftYSin = Math.sin(driftY), driftYCos = Math.cos(driftY);
 
     const impulse = 36 * scale;
     const influence = Math.max(17, impulse);
@@ -215,12 +222,9 @@ function initHelix(canvas) {
     for (const group of highlightBatches) group.length = 0;
     for (const group of crossbarBatches) group.length = 0;
 
-    const density = width < 420 ? .60 : width < 580 ? .744 : 1;
-    const count = Math.round(particles.length * density);
-    for (let index = 0; index < count; index++) {
-      const particle = particles[Math.floor(index * particles.length / count)];
-      const x = particle.x + Math.sin(seconds * 1.42 + particle.phase) * 1.42;
-      const y = particle.y + Math.sin(seconds * 1.14 + particle.phase) * .88;
+    for (const particle of visibleParticles) {
+      const x = particle.x + (driftXSin * particle.phaseCos + driftXCos * particle.phaseSin) * 1.42;
+      const y = particle.y + (driftYSin * particle.phaseCos + driftYCos * particle.phaseSin) * .88;
       const a = x * ca + particle.z * sa;
       const b = particle.z * ca - x * sa;
       const c = y * ci + b * si;
@@ -334,6 +338,11 @@ function initHelix(canvas) {
     tall = nextHeight;
     wide = width / tall > 1.52;
     scale = Math.min(width / (wide ? 413 : 354), tall / (wide ? 294 : 437));
+    const density = width < 420 ? .60 : width < 580 ? .744 : 1;
+    const count = Math.round(particles.length * density);
+    visibleParticles = density === 1 ? particles : Array.from(
+      { length: count }, (_, index) => particles[Math.floor(index * particles.length / count)],
+    );
     canvas.width = pixelWidth;
     canvas.height = pixelHeight;
     context.setTransform(canvas.width / width, 0, 0, canvas.height / tall, 0, 0);
@@ -341,15 +350,19 @@ function initHelix(canvas) {
   }
 
   function tick(stamp) {
-    const frameInterval = touchInput.matches && !pointer.inside && pointer.pulse === 0 ? 31 : 11.4;
-    if (previousFrame && stamp - previousFrame < frameInterval) {
-      frameId = requestAnimationFrame(tick);
-      return;
+    const interval = 1000 / (touchInput.matches && !pointer.inside && pointer.pulse === 0 ? 30 : 60);
+    if (frameInterval !== interval) {
+      frameInterval = interval;
+      nextFrame = stamp;
     }
-    const dt = previousFrame ? Math.min(.05, (stamp - previousFrame) / 1000) : 0;
-    previousFrame = stamp;
-    time += dt;
-    draw(time, dt);
+    if (stamp >= nextFrame - .5) {
+      const dt = previousFrame ? Math.min(.05, (stamp - previousFrame) / 1000) : 0;
+      previousFrame = stamp;
+      // Keep deadlines on the same clock on 60, 90 and 120 Hz screens.
+      nextFrame += (Math.floor(Math.max(0, stamp - nextFrame) / interval) + 1) * interval;
+      time += dt;
+      draw(time, dt);
+    }
     frameId = requestAnimationFrame(tick);
   }
 
@@ -357,6 +370,7 @@ function initHelix(canvas) {
     const running = !paused && inView && !document.hidden;
     if (running && !frameId) {
       previousFrame = 0;
+      frameInterval = 0;
       frameId = requestAnimationFrame(tick);
     } else if (!running && frameId) {
       cancelAnimationFrame(frameId);
