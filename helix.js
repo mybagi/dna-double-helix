@@ -10,26 +10,43 @@ const translatedAttributes = ['alt', 'aria-label', 'content'].flatMap(name => {
     element, name, en: element.getAttribute(name), zh: element.getAttribute(source),
   }));
 });
-let language = siteLocale.read('en');
-const scene = initHelix(document.querySelector('#dna'));
+let language;
+let scene;
 
 function t(simplified, english) {
   return siteLocale.text(language, simplified, english);
 }
 
-function displayLanguage() {
-  siteLocale.apply(languageSelect, language);
+siteLocale.bind(languageSelect, 'en', selected => {
+  language = selected;
   for (const { element, zh, en } of translations) element.textContent = t(zh, en);
   for (const { element, name, zh, en } of translatedAttributes) element.setAttribute(name, t(zh, en));
   scene?.updateControl();
-}
-
-languageSelect.addEventListener('change', () => {
-  language = languageSelect.value;
-  siteLocale.save(language);
-  displayLanguage();
 });
-displayLanguage();
+startHelixWhenVisible(document.querySelector('#dna'), animatedScene => { scene = animatedScene; });
+
+function startHelixWhenVisible(canvas, ready) {
+  function schedule() {
+    const initialize = () => {
+      const scene = initHelix(canvas);
+      scene?.updateControl();
+      ready(scene);
+    };
+    if ('requestIdleCallback' in window) requestIdleCallback(initialize, { timeout: 350 });
+    else requestAnimationFrame(() => setTimeout(initialize, 0));
+  }
+
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      schedule();
+    }, { rootMargin: '100px 0px' });
+    observer.observe(canvas);
+  } else {
+    schedule();
+  }
+}
 
 function initHelix(canvas) {
   const figure = canvas.closest('figure');
@@ -40,6 +57,7 @@ function initHelix(canvas) {
   const control = figure.querySelector('.motion');
   const controlLabel = control?.querySelector('.motion-label');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  const touchInput = matchMedia('(pointer: coarse)');
   const pointer = { x: 0, y: 0, lastX: 0, lastY: 0, flowX: 0, flowY: 0, strength: 0, pulse: 0, inside: false };
   const tau = Math.PI * 2;
   const halfTurns = 5;
@@ -139,7 +157,7 @@ function initHelix(canvas) {
   let frameId = 0;
   let previousFrame = 0;
   let paused = motionPreference.matches;
-  let inView = true;
+  let inView = !('IntersectionObserver' in window);
 
   function draw(seconds, dt) {
     const phase = seconds % 14;
@@ -306,19 +324,25 @@ function initHelix(canvas) {
   }
 
   function resize() {
-    width = Math.max(1, canvas.clientWidth);
-    tall = Math.max(1, canvas.clientHeight);
+    const nextWidth = Math.max(1, canvas.clientWidth);
+    const nextHeight = Math.max(1, canvas.clientHeight);
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.max(1, Math.sqrt(820000 / (nextWidth * nextHeight))));
+    const pixelWidth = Math.round(nextWidth * ratio);
+    const pixelHeight = Math.round(nextHeight * ratio);
+    if (nextWidth === width && nextHeight === tall && pixelWidth === canvas.width && pixelHeight === canvas.height) return;
+    width = nextWidth;
+    tall = nextHeight;
     wide = width / tall > 1.52;
     scale = Math.min(width / (wide ? 413 : 354), tall / (wide ? 294 : 437));
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.max(1, Math.sqrt(820000 / (width * tall))));
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(tall * ratio);
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
     context.setTransform(canvas.width / width, 0, 0, canvas.height / tall, 0, 0);
     draw(time, 0);
   }
 
   function tick(stamp) {
-    if (previousFrame && stamp - previousFrame < 11.4) {
+    const frameInterval = touchInput.matches && !pointer.inside && pointer.pulse === 0 ? 31 : 11.4;
+    if (previousFrame && stamp - previousFrame < frameInterval) {
       frameId = requestAnimationFrame(tick);
       return;
     }

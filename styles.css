@@ -91,7 +91,7 @@ h1 {
 }
 
 .molecule.fallback #dna {
-  background: url('./helix-still.png') center / contain no-repeat;
+  background: url('./helix-still.webp') center / contain no-repeat;
 }
 
 figcaption {
